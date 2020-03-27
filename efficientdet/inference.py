@@ -21,11 +21,10 @@ from __future__ import print_function
 
 import copy
 import os
-from typing import Text, Dict, Any, List
-
 import numpy as np
-import tensorflow.compat.v1 as tf
 from PIL import Image
+import tensorflow.compat.v1 as tf
+from typing import Text, Dict, Any, List
 
 import anchors
 import dataloader
@@ -33,6 +32,7 @@ import det_model_fn
 import hparams_config
 import utils
 from visualize import vis_utils
+
 
 coco_id_mapping = {
     1: 'person', 2: 'bicycle', 3: 'car', 4: 'motorcycle', 5: 'airplane',
@@ -56,216 +56,216 @@ coco_id_mapping = {
 
 
 def image_preprocess(image, image_size: int):
-    """Preprocess image for inference.
+  """Preprocess image for inference.
 
-    Args:
-      image: input image, can be a tensor or a numpy arary.
-      image_size: integer of image size.
+  Args:
+    image: input image, can be a tensor or a numpy arary.
+    image_size: integer of image size.
 
-    Returns:
-      (image, scale): a tuple of processed image and its scale.
-    """
-    input_processor = dataloader.DetectionInputProcessor(image, image_size)
-    input_processor.normalize_image()
-    input_processor.set_scale_factors_to_output_size()
-    image = input_processor.resize_and_crop_image()
-    image_scale = input_processor.image_scale_to_original
-    return image, image_scale
+  Returns:
+    (image, scale): a tuple of processed image and its scale.
+  """
+  input_processor = dataloader.DetectionInputProcessor(image, image_size)
+  input_processor.normalize_image()
+  input_processor.set_scale_factors_to_output_size()
+  image = input_processor.resize_and_crop_image()
+  image_scale = input_processor.image_scale_to_original
+  return image, image_scale
 
 
 def build_inputs(image_path_pattern: Text, image_size: int):
-    """Read and preprocess input images.
+  """Read and preprocess input images.
 
-    Args:
-      image_path_pattern: a path to indicate a single or multiple files.
-      image_size: a single integer for image width and height.
+  Args:
+    image_path_pattern: a path to indicate a single or multiple files.
+    image_size: a single integer for image width and height.
 
-    Returns:
-      (raw_images, images, scales): raw images, processed images, and scales.
-    """
-    raw_images, images, scales = [], [], []
-    for f in tf.io.gfile.glob(image_path_pattern):
-        image = Image.open(f)
-        raw_images.append(image)
-        image, scale = image_preprocess(image, image_size)
-        images.append(image)
-        scales.append(scale)
-    return raw_images, tf.stack(images), tf.stack(scales)
+  Returns:
+    (raw_images, images, scales): raw images, processed images, and scales.
+  """
+  raw_images, images, scales = [], [], []
+  for f in tf.io.gfile.glob(image_path_pattern):
+    image = Image.open(f)
+    raw_images.append(image)
+    image, scale = image_preprocess(image, image_size)
+    images.append(image)
+    scales.append(scale)
+  return raw_images, tf.stack(images), tf.stack(scales)
 
 
 def build_model(model_name: Text, inputs: tf.Tensor, **kwargs):
-    """Build model for a given model name.
+  """Build model for a given model name.
 
-    Args:
-      model_name: the name of the model.
-      inputs: an image tensor or a numpy array.
-      **kwargs: extra parameters for model builder.
+  Args:
+    model_name: the name of the model.
+    inputs: an image tensor or a numpy array.
+    **kwargs: extra parameters for model builder.
 
-    Returns:
-      (class_outputs, box_outputs): the outputs for class and box predictions.
-      Each is a dictionary with key as feature level and value as predictions.
-    """
-    model_arch = det_model_fn.get_model_arch(model_name)
-    class_outputs, box_outputs = model_arch(inputs, model_name, **kwargs)
-    return class_outputs, box_outputs
+  Returns:
+    (class_outputs, box_outputs): the outputs for class and box predictions.
+    Each is a dictionary with key as feature level and value as predictions.
+  """
+  model_arch = det_model_fn.get_model_arch(model_name)
+  class_outputs, box_outputs = model_arch(inputs, model_name, **kwargs)
+  return class_outputs, box_outputs
 
 
 def restore_ckpt(sess, ckpt_path, enable_ema=True, export_ckpt=None):
-    """Restore variables from a given checkpoint.
+  """Restore variables from a given checkpoint.
 
-    Args:
-      sess: a tf session for restoring or exporting models.
-      ckpt_path: the path of the checkpoint. Can be a file path or a folder path.
-      enable_ema: whether reload ema values or not.
-      export_ckpt: whether to export the restored model.
-    """
-    sess.run(tf.global_variables_initializer())
-    if tf.io.gfile.isdir(ckpt_path):
-        ckpt_path = tf.train.latest_checkpoint(ckpt_path)
-    if enable_ema:
-        ema = tf.train.ExponentialMovingAverage(decay=0.0)
-        ema_vars = utils.get_ema_vars()
-        var_dict = ema.variables_to_restore(ema_vars)
-        ema_assign_op = ema.apply(ema_vars)
-    else:
-        var_dict = utils.get_ema_vars()
-        ema_assign_op = None
-    tf.train.get_or_create_global_step()
-    sess.run(tf.global_variables_initializer())
-    saver = tf.train.Saver(var_dict, max_to_keep=1)
-    saver.restore(sess, ckpt_path)
+  Args:
+    sess: a tf session for restoring or exporting models.
+    ckpt_path: the path of the checkpoint. Can be a file path or a folder path.
+    enable_ema: whether reload ema values or not.
+    export_ckpt: whether to export the restored model.
+  """
+  sess.run(tf.global_variables_initializer())
+  if tf.io.gfile.isdir(ckpt_path):
+    ckpt_path = tf.train.latest_checkpoint(ckpt_path)
+  if enable_ema:
+    ema = tf.train.ExponentialMovingAverage(decay=0.0)
+    ema_vars = utils.get_ema_vars()
+    var_dict = ema.variables_to_restore(ema_vars)
+    ema_assign_op = ema.apply(ema_vars)
+  else:
+    var_dict = utils.get_ema_vars()
+    ema_assign_op = None
+  tf.train.get_or_create_global_step()
+  sess.run(tf.global_variables_initializer())
+  saver = tf.train.Saver(var_dict, max_to_keep=1)
+  saver.restore(sess, ckpt_path)
 
-    if export_ckpt:
-        print('export model to {}'.format(export_ckpt))
-        if ema_assign_op is not None:
-            sess.run(ema_assign_op)
-        saver = tf.train.Saver(max_to_keep=1, save_relative_paths=True)
-        saver.save(sess, export_ckpt)
+  if export_ckpt:
+    print('export model to {}'.format(export_ckpt))
+    if ema_assign_op is not None:
+      sess.run(ema_assign_op)
+    saver = tf.train.Saver(max_to_keep=1, save_relative_paths=True)
+    saver.save(sess, export_ckpt)
 
 
 def det_post_process(params: Dict[Any, Any], cls_outputs: Dict[int, tf.Tensor],
                      box_outputs: Dict[int, tf.Tensor], scales: List[float]):
-    """Post preprocessing the box/class predictions.
+  """Post preprocessing the box/class predictions.
 
-    Args:
-      params: a parameter dictionary that includes `min_level`, `max_level`,
-        `batch_size`, and `num_classes`.
-      cls_outputs: an OrderDict with keys representing levels and values
-        representing logits in [batch_size, height, width, num_anchors].
-      box_outputs: an OrderDict with keys representing levels and values
-        representing box regression targets in
-        [batch_size, height, width, num_anchors * 4].
-      scales: a list of float values indicating image scale.
+  Args:
+    params: a parameter dictionary that includes `min_level`, `max_level`,
+      `batch_size`, and `num_classes`.
+    cls_outputs: an OrderDict with keys representing levels and values
+      representing logits in [batch_size, height, width, num_anchors].
+    box_outputs: an OrderDict with keys representing levels and values
+      representing box regression targets in
+      [batch_size, height, width, num_anchors * 4].
+    scales: a list of float values indicating image scale.
 
-    Returns:
-      detections_batch: a batch of detection results. Each detection is a tensor
-        with each row representing [image_id, x, y, width, height, score, class].
-    """
-    # TODO(tanmingxing): refactor the code to make it more explicity.
-    outputs = {'cls_outputs_all': [None], 'box_outputs_all': [None],
-               'indices_all': [None], 'classes_all': [None]}
-    det_model_fn.add_metric_fn_inputs(
-        params, cls_outputs, box_outputs, outputs)
+  Returns:
+    detections_batch: a batch of detection results. Each detection is a tensor
+      with each row representing [image_id, x, y, width, height, score, class].
+  """
+  # TODO(tanmingxing): refactor the code to make it more explicity.
+  outputs = {'cls_outputs_all': [None], 'box_outputs_all': [None],
+             'indices_all': [None], 'classes_all': [None]}
+  det_model_fn.add_metric_fn_inputs(
+      params, cls_outputs, box_outputs, outputs)
 
-    # Create anchor_label for picking top-k predictions.
-    eval_anchors = anchors.Anchors(params['min_level'],
-                                   params['max_level'],
-                                   params['num_scales'],
-                                   params['aspect_ratios'],
-                                   params['anchor_scale'],
-                                   params['image_size'])
-    anchor_labeler = anchors.AnchorLabeler(eval_anchors, params['num_classes'])
+  # Create anchor_label for picking top-k predictions.
+  eval_anchors = anchors.Anchors(params['min_level'],
+                                 params['max_level'],
+                                 params['num_scales'],
+                                 params['aspect_ratios'],
+                                 params['anchor_scale'],
+                                 params['image_size'])
+  anchor_labeler = anchors.AnchorLabeler(eval_anchors, params['num_classes'])
 
-    # Add all detections for each input image.
-    detections_batch = []
-    for index in range(params['batch_size']):
-        cls_outputs_per_sample = outputs['cls_outputs_all'][index]
-        box_outputs_per_sample = outputs['box_outputs_all'][index]
-        indices_per_sample = outputs['indices_all'][index]
-        classes_per_sample = outputs['classes_all'][index]
-        detections = anchor_labeler.generate_detections(
-            cls_outputs_per_sample, box_outputs_per_sample, indices_per_sample,
-            classes_per_sample, image_id=[index], image_scale=[scales[index]])
-        detections_batch.append(detections)
-    return detections_batch
+  # Add all detections for each input image.
+  detections_batch = []
+  for index in range(params['batch_size']):
+    cls_outputs_per_sample = outputs['cls_outputs_all'][index]
+    box_outputs_per_sample = outputs['box_outputs_all'][index]
+    indices_per_sample = outputs['indices_all'][index]
+    classes_per_sample = outputs['classes_all'][index]
+    detections = anchor_labeler.generate_detections(
+        cls_outputs_per_sample, box_outputs_per_sample, indices_per_sample,
+        classes_per_sample, image_id=[index], image_scale=[scales[index]])
+    detections_batch.append(detections)
+  return detections_batch
 
 
 def visualize_image(image, boxes, classes, scores, id_mapping):
-    """Visualizes a list of images.
+  """Visualizes a list of images.
 
-    Args:
-      image: a image with shape [H, W, C].
-      boxes: a box prediction with shape [N, 4] ordered [ymin, xmin, ymax, xmax].
-      classes: a class prediction with shape [N].
-      scores: A list of float value with shape [N].
-      id_mapping: a dictionary from class id to name.
+  Args:
+    image: a image with shape [H, W, C].
+    boxes: a box prediction with shape [N, 4] ordered [ymin, xmin, ymax, xmax].
+    classes: a class prediction with shape [N].
+    scores: A list of float value with shape [N].
+    id_mapping: a dictionary from class id to name.
 
-    Returns:
-      output_image: an output image with annotated boxes and classes.
-    """
-    category_index = {k: {'id': k, 'name': id_mapping[k]} for k in id_mapping}
-    img = np.array(image)
-    vis_utils.visualize_boxes_and_labels_on_image_array(
-        img,
-        boxes,
-        classes,
-        scores,
-        category_index,
-        min_score_thresh=0.5,
-        instance_masks=None,
-        use_normalized_coordinates=False,
-        line_thickness=4)
-    return img
+  Returns:
+    output_image: an output image with annotated boxes and classes.
+  """
+  category_index = {k: {'id': k, 'name': id_mapping[k]} for k in id_mapping}
+  img = np.array(image)
+  vis_utils.visualize_boxes_and_labels_on_image_array(
+      img,
+      boxes,
+      classes,
+      scores,
+      category_index,
+      min_score_thresh=0.5,
+      instance_masks=None,
+      use_normalized_coordinates=False,
+      line_thickness=4)
+  return img
 
 
 class InferenceDriver(object):
-    """A driver for doing inference."""
+  """A driver for doing inference."""
 
-    def __init__(self, model_name: Text, ckpt_path: Text, image_size: int = None,
-                 label_id_mapping: Dict[int, Text] = None):
-        """Initialize the inference driver."""
-        self.model_name = model_name
-        self.ckpt_path = ckpt_path
-        self.label_id_mapping = label_id_mapping or coco_id_mapping
+  def __init__(self, model_name: Text, ckpt_path: Text, image_size: int = None,
+               label_id_mapping: Dict[int, Text] = None):
+    """Initialize the inference driver."""
+    self.model_name = model_name
+    self.ckpt_path = ckpt_path
+    self.label_id_mapping = label_id_mapping or coco_id_mapping
 
-        self.params = hparams_config.get_detection_config(self.model_name).as_dict()
-        self.params.update(dict(is_training_bn=False, use_bfloat16=False))
-        if image_size:
-            self.params.update(dict(image_size=image_size))
+    self.params = hparams_config.get_detection_config(self.model_name).as_dict()
+    self.params.update(dict(is_training_bn=False, use_bfloat16=False))
+    if image_size:
+      self.params.update(dict(image_size=image_size))
 
-    def inference(self, image_path_pattern: Text, output_dir: Text):
-        """Read and preprocess input images."""
-        params = copy.deepcopy(self.params)
-        with tf.Session() as sess:
-            # Buid inputs and preprocessing.
-            raw_images, images, scales = build_inputs(
-                image_path_pattern, params['image_size'])
+  def inference(self, image_path_pattern: Text, output_dir: Text):
+    """Read and preprocess input images."""
+    params = copy.deepcopy(self.params)
+    with tf.Session() as sess:
+      # Buid inputs and preprocessing.
+      raw_images, images, scales = build_inputs(
+          image_path_pattern, params['image_size'])
 
-            # Build model.
-            class_outputs, box_outputs = build_model(
-                self.model_name, images, **self.params)
-            restore_ckpt(sess, self.ckpt_path, enable_ema=True, export_ckpt=None)
-            params.update(dict(batch_size=1))  # required by postprocessing.
+      # Build model.
+      class_outputs, box_outputs = build_model(
+          self.model_name, images, **self.params)
+      restore_ckpt(sess, self.ckpt_path, enable_ema=True, export_ckpt=None)
+      params.update(dict(batch_size=1))  # required by postprocessing.
 
-            # Build postprocessing.
-            detections_batch = det_post_process(
-                params, class_outputs, box_outputs, scales)
-            outputs_np = sess.run(detections_batch)
+      # Build postprocessing.
+      detections_batch = det_post_process(
+          params, class_outputs, box_outputs, scales)
+      outputs_np = sess.run(detections_batch)
 
-            # Visualize results.
-            for i, output_np in enumerate(outputs_np):
-                # output_np has format [image_id, x, y, width, height, score, class]
-                boxes = output_np[:, 1:5]
-                classes = output_np[:, 6].astype(int)
-                scores = output_np[:, 5]
-                # convert [x, y, width, height] to [ymin, xmin, ymax, xmax]
-                # TODO(tanmingxing): make this convertion more efficient.
-                boxes[:, [0, 1, 2, 3]] = boxes[:, [1, 0, 3, 2]]
-                boxes[:, 2:4] += boxes[:, 0:2]
-                img = visualize_image(
-                    raw_images[i], boxes, classes, scores, self.label_id_mapping)
-                output_image_path = os.path.join(output_dir, str(i) + '.jpg')
-                Image.fromarray(img).save(output_image_path)
-                tf.logging.info('writing file to {}'.format(output_image_path))
+      # Visualize results.
+      for i, output_np in enumerate(outputs_np):
+        # output_np has format [image_id, x, y, width, height, score, class]
+        boxes = output_np[:, 1:5]
+        classes = output_np[:, 6].astype(int)
+        scores = output_np[:, 5]
+        # convert [x, y, width, height] to [ymin, xmin, ymax, xmax]
+        # TODO(tanmingxing): make this convertion more efficient.
+        boxes[:, [0, 1, 2, 3]] = boxes[:, [1, 0, 3, 2]]
+        boxes[:, 2:4] += boxes[:, 0:2]
+        img = visualize_image(
+            raw_images[i], boxes, classes, scores, self.label_id_mapping)
+        output_image_path = os.path.join(output_dir, str(i) + '.jpg')
+        Image.fromarray(img).save(output_image_path)
+        tf.logging.info('writing file to {}'.format(output_image_path))
 
-            return outputs_np
+      return outputs_np

@@ -25,13 +25,14 @@ from aug import autoaugment
 
 class AutoaugmentTest(tf.test.TestCase):
 
-    def test_autoaugment_policy(self):
-        # A very simple test to verify no syntax error.
-        image = tf.placeholder(tf.uint8, shape=[640, 640, 3])
-        bboxes = tf.placeholder(tf.float32, shape=[4, 4])
-        autoaugment.distort_image_with_autoaugment(image, bboxes, 'test')
+  def test_autoaugment_policy(self):
+    # A very simple test to verify no syntax error.
+    image = tf.placeholder(tf.uint8, shape=[640, 640, 3])
+    bboxes = tf.placeholder(tf.float32, shape=[4, 4])
+    autoaugment.distort_image_with_autoaugment(image, bboxes, 'test')
 
 
 if __name__ == '__main__':
-    tf.disable_v2_behavior()
-    tf.test.main()
+  tf.disable_v2_behavior()
+  tf.test.main()
+
