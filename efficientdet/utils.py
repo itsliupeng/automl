@@ -210,7 +210,7 @@ class BatchNormalization(tf.layers.BatchNormalization):
 
   def __init__(self, **kwargs):
     if not kwargs.get('name', None):
-      kwargs['name'] = 'tpu_batch_normalization'
+      kwargs['name'] = 'batch_normalization'
     super(BatchNormalization, self).__init__(**kwargs)
 
 
