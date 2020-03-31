@@ -579,7 +579,7 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
     scaffold_fn = None
 
   init_weights_hooks = BroadcastGlobalVariablesHook(root_rank=0,
-                                                    model_dir=params['model_idr'])
+                                                    model_dir=params['model_dir'])
 
   training_hooks = [init_weights_hooks]
   return tf.estimator.EstimatorSpec(
