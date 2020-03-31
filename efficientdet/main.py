@@ -18,23 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
 import os
-
-from absl import flags
-from absl import logging
 
 import numpy as np
 import tensorflow.compat.v1 as tf
+from absl import flags
+from absl import logging
 
 import dataloader
 import det_model_fn
 import hparams_config
-import utils
 from horovod_estimator import HorovodEstimator, hvd_try_init, hvd_info_rank0, hvd
-import multiprocessing
-
-
-
 
 # Cloud TPU Cluster Resolvers
 flags.DEFINE_string(
@@ -305,13 +300,15 @@ def main(argv):
         config=run_config,
         params=params)
 
-    train_estimator.train(
-        input_fn=dataloader.InputReader(FLAGS.training_file_pattern,
-                                        is_training=True,
-                                        params=params,
-                                        use_fake_data=FLAGS.use_fake_data),
-        max_steps=int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) /
-                      FLAGS.train_batch_size))
+    input_fn = dataloader.InputReader(FLAGS.training_file_pattern,
+                                      is_training=True,
+                                      params=params,
+                                      use_fake_data=FLAGS.use_fake_data)
+    max_steps = int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) / FLAGS.train_batch_size)
+
+    import pdb
+    pdb.set_trace()
+    train_estimator.train(input_fn=input_fn, max_steps=max_steps)
 
     # if FLAGS.eval_after_training:
     #   # Run evaluation after training finishes.
