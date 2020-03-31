@@ -23,12 +23,8 @@ def hvd_try_init():
     if not IS_HVD_INIT and hvd is not None:
         hvd.init()
         IS_HVD_INIT = True
-        if tf.__version__.startswith('1.13'):
-            tf.get_logger().propagate = False
-        else:
-            from tensorflow.python.platform import tf_logging
-            tf_logging._get_logger().propagate = False
 
+        tf.get_logger().propagate = False
         if hvd.rank() == 0:
             tf.logging.set_verbosity('INFO')
         else:
