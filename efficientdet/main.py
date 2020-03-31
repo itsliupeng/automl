@@ -138,6 +138,7 @@ def set_env(use_amp, use_fast_math=False):
         os.environ['TF_ENABLE_CUDNN_TENSOR_OP_MATH_FP32'] = '1'
         os.environ['TF_ENABLE_CUDNN_RNN_TENSOR_OP_MATH_FP32'] = '1'
 
+
 def get_session_config(use_xla):
     config = tf.ConfigProto()
 
@@ -305,7 +306,7 @@ def main(argv):
                                       is_training=True,
                                       params=params,
                                       use_fake_data=FLAGS.use_fake_data)
-    max_steps = int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) / FLAGS.train_batch_size)
+    max_steps = int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) / (FLAGS.train_batch_size * num_shards)) + 1
 
     train_estimator.train(input_fn=input_fn, max_steps=max_steps)
 
