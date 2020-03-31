@@ -586,7 +586,7 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
   init_weights_hook = BroadcastGlobalVariablesHook(root_rank=0,
                                                     model_dir=params['model_dir'])
 
-  logging_hook = LoggingTensorHook(utils.get_scalar_summaries(), summary_dir=params['model_dir'])
+  logging_hook = LoggingTensorHook(dict(utils.get_scalar_summaries()), summary_dir=params['model_dir'])
 
   training_hooks = [init_weights_hook, logging_hook]
   return tf.estimator.EstimatorSpec(
