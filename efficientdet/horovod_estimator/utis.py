@@ -4,8 +4,7 @@ try:
     import horovod.tensorflow as hvd
 except ImportError:
     hvd = None
-import tensorflow as tf
-
+import tensorflow.compat.v1 as tf
 
 def is_rank0():
     if hvd is not None:
