@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-num_gpus=2
+num_gpus=$1
 
 #export NCCL_P2P_DISABLE=1
 export PYTHONPATH=`pwd`:$PYTHONPATH

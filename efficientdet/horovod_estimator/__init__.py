@@ -9,7 +9,6 @@ from multiprocessing import Pool, cpu_count
 
 import numpy as np
 import tensorflow as tf
-from yacs.config import CfgNode
 
 from .estimator import HorovodEstimator
 from .utis import hvd_info, hvd_info_rank0, hvd_try_init
