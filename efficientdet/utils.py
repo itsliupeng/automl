@@ -215,10 +215,11 @@ class BatchNormalization(tf.layers.BatchNormalization):
 
 
 def batch_norm_class(is_training):
-  if is_training:
-    return TpuBatchNormalization
-  else:
-    return BatchNormalization
+  # if is_training:
+  #   return TpuBatchNormalization
+  # else:
+  #   return BatchNormalization
+  return BatchNormalization
 
 
 def tpu_batch_normalization(inputs, training=False, **kwargs):
