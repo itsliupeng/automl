@@ -29,7 +29,7 @@ import efficientdet_arch
 import hparams_config
 import retinanet_arch
 import utils
-from horovod_estimator.hooks import BroadcastGlobalVariablesHook
+from horovod_estimator.hooks import BroadcastGlobalVariablesHook, LoggingTensorHook
 from horovod_estimator import show_model
 from horovod_estimator.utis import is_rank0
 
@@ -583,10 +583,12 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
   else:
     scaffold_fn = None
 
-  init_weights_hooks = BroadcastGlobalVariablesHook(root_rank=0,
+  init_weights_hook = BroadcastGlobalVariablesHook(root_rank=0,
                                                     model_dir=params['model_dir'])
 
-  training_hooks = [init_weights_hooks]
+  logging_hook = LoggingTensorHook(utils.get_scalar_summaries(), summary_dir=params['model_dir'])
+
+  training_hooks = [init_weights_hook, logging_hook]
   return tf.estimator.EstimatorSpec(
       mode=mode,
       loss=total_loss,
