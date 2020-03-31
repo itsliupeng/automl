@@ -175,16 +175,6 @@ def main(argv):
   set_env(False)
 
 
-  if FLAGS.use_tpu:
-    tpu_cluster_resolver = tf.distribute.cluster_resolver.TPUClusterResolver(
-        FLAGS.tpu,
-        zone=FLAGS.tpu_zone,
-        project=FLAGS.gcp_project)
-    tpu_grpc_url = tpu_cluster_resolver.get_master()
-    tf.Session.reset(tpu_grpc_url)
-  else:
-    tpu_cluster_resolver = None
-
   # Check data path
   if FLAGS.mode in ('train',
                     'train_and_eval') and FLAGS.training_file_pattern is None:

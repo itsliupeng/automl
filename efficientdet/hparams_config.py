@@ -297,7 +297,7 @@ def get_retinanet_config(model_name='retinanet-50'):
   return h
 
 
-def get_detection_config(model_name):
+def get_detection_config(model_name) -> Config:
   if model_name.startswith('efficientdet'):
     return get_efficientdet_config(model_name)
   elif model_name.startswith('retinanet'):

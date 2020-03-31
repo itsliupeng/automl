@@ -29,6 +29,7 @@ import efficientdet_arch
 import hparams_config
 import retinanet_arch
 import utils
+from horovod_estimator.hooks import BroadcastGlobalVariablesHook
 
 _DEFAULT_BATCH_SIZE = 64
 
@@ -450,8 +451,6 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
   if mode == tf.estimator.ModeKeys.TRAIN:
     optimizer = tf.train.MomentumOptimizer(
         learning_rate, momentum=params['momentum'])
-    if params['use_tpu']:
-      optimizer = tf.tpu.CrossShardOptimizer(optimizer)
 
     # Batch norm requires update_ops to be added as a train_op dependency.
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -579,13 +578,19 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
   else:
     scaffold_fn = None
 
+  init_weights_hooks = BroadcastGlobalVariablesHook(root_rank=0,
+                                                    model_dir=params['model_idr'])
+
+  training_hooks = [init_weights_hooks]
   return tf.estimator.EstimatorSpec(
       mode=mode,
       loss=total_loss,
       train_op=train_op,
       eval_metric_ops=eval_metrics,
       # host_call=utils.get_tpu_host_call(global_step, params),
-      scaffold=scaffold_fn() if scaffold_fn is not None else None)
+      scaffold=scaffold_fn() if scaffold_fn is not None else None,
+      training_hooks=training_hooks
+  )
 
 
 def retinanet_model_fn(features, labels, mode, params):
