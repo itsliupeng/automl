@@ -30,7 +30,10 @@ import dataloader
 import det_model_fn
 import hparams_config
 import utils
-from horovod_estimator import HorovodEstimator
+from horovod_estimator import HorovodEstimator, hvd_try_init, hvd_info_rank0, hvd
+import multiprocessing
+
+
 
 
 # Cloud TPU Cluster Resolvers
@@ -115,8 +118,62 @@ flags.DEFINE_integer(
 FLAGS = flags.FLAGS
 
 
+def set_env(use_amp, use_fast_math=False):
+    os.environ['CUDA_CACHE_DISABLE'] = '0'
+    os.environ['HOROVOD_GPU_ALLREDUCE'] = 'NCCL'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
+    os.environ['TF_GPU_THREAD_COUNT'] = '1' if hvd is None else str(hvd.size())
+    os.environ['TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT'] = '1'
+    os.environ['TF_ADJUST_HUE_FUSED'] = '1'
+    os.environ['TF_ADJUST_SATURATION_FUSED'] = '1'
+    os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
+    os.environ['TF_SYNC_ON_FINISH'] = '0'
+    os.environ['TF_AUTOTUNE_THRESHOLD'] = '2'
+    os.environ['TF_DISABLE_NVTX_RANGES'] = '1'
+
+    if use_amp:
+        hvd_info_rank0("AMP is activated")
+        os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
+        os.environ['TF_ENABLE_AUTO_MIXED_PRECISION_GRAPH_REWRITE'] = '1'
+        os.environ['TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING'] = '1'
+
+    if use_fast_math:
+        hvd_info_rank0("use_fast_math is activated")
+        os.environ['TF_ENABLE_CUBLAS_TENSOR_OP_MATH_FP32'] = '1'
+        os.environ['TF_ENABLE_CUDNN_TENSOR_OP_MATH_FP32'] = '1'
+        os.environ['TF_ENABLE_CUDNN_RNN_TENSOR_OP_MATH_FP32'] = '1'
+
+def get_session_config(use_xla):
+    config = tf.ConfigProto()
+
+    config.allow_soft_placement = True
+    config.log_device_placement = False
+    config.gpu_options.allow_growth = True
+
+    if hvd is not None:
+        config.gpu_options.visible_device_list = str(hvd.local_rank())
+
+    if use_xla:
+        hvd_info_rank0("XLA is activated - Experimental Feature")
+        config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+
+    config.gpu_options.force_gpu_compatible = True  # Force pinned memory
+
+    config.intra_op_parallelism_threads = 1  # Avoid pool of Eigen threads
+    if hvd is not None:
+        config.inter_op_parallelism_threads = max(2, (multiprocessing.cpu_count() // hvd.size()) - 2)
+    else:
+        config.inter_op_parallelism_threads = 4
+
+    return config
+
 def main(argv):
   del argv  # Unused.
+
+  hvd_try_init()
+  set_env(False)
+
 
   if FLAGS.use_tpu:
     tpu_cluster_resolver = tf.distribute.cluster_resolver.TPUClusterResolver(
@@ -213,28 +270,32 @@ def main(argv):
       testdev_dir=FLAGS.testdev_dir,
       mode=FLAGS.mode,
   )
-  config_proto = tf.ConfigProto(
-      allow_soft_placement=True, log_device_placement=False)
-  if FLAGS.use_xla and not FLAGS.use_tpu:
-    config_proto.graph_options.optimizer_options.global_jit_level = (
-        tf.OptimizerOptions.ON_1)
+  # config_proto = tf.ConfigProto(
+  #     allow_soft_placement=True, log_device_placement=False)
+  # if FLAGS.use_xla and not FLAGS.use_tpu:
+  #   config_proto.graph_options.optimizer_options.global_jit_level = (
+  #       tf.OptimizerOptions.ON_1)
+  #
+  # tpu_config = tf.estimator.tpu.TPUConfig(
+  #     FLAGS.iterations_per_loop,
+  #     num_shards=num_shards,
+  #     num_cores_per_replica=num_cores_per_replica,
+  #     input_partition_dims=input_partition_dims,
+  #     per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig
+  #     .PER_HOST_V2)
+  #
+  # run_config = tf.estimator.tpu.RunConfig(
+  #     cluster=tpu_cluster_resolver,
+  #     evaluation_master=FLAGS.eval_master,
+  #     model_dir=FLAGS.model_dir,
+  #     log_step_count_steps=FLAGS.iterations_per_loop,
+  #     session_config=config_proto,
+  #     tpu_config=tpu_config,
+  # )
 
-  tpu_config = tf.estimator.tpu.TPUConfig(
-      FLAGS.iterations_per_loop,
-      num_shards=num_shards,
-      num_cores_per_replica=num_cores_per_replica,
-      input_partition_dims=input_partition_dims,
-      per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig
-      .PER_HOST_V2)
-
-  run_config = tf.estimator.tpu.RunConfig(
-      cluster=tpu_cluster_resolver,
-      evaluation_master=FLAGS.eval_master,
-      model_dir=FLAGS.model_dir,
-      log_step_count_steps=FLAGS.iterations_per_loop,
-      session_config=config_proto,
-      tpu_config=tpu_config,
-  )
+  run_config = tf.estimator.RunConfig(
+      session_config=get_session_config(False),
+      save_checkpoints_steps=200)
 
   model_fn_instance = det_model_fn.get_model_fn(FLAGS.model_name)
 
