@@ -313,132 +313,134 @@ def main(argv):
         max_steps=int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) /
                       FLAGS.train_batch_size))
 
-    if FLAGS.eval_after_training:
-      # Run evaluation after training finishes.
-      eval_params = dict(
-          params,
-          use_tpu=False,
-          input_rand_hflip=False,
-          is_training_bn=False,
-          use_bfloat16=False,
-      )
-      eval_estimator = tf.estimator.tpu.TPUEstimator(
-          model_fn=model_fn_instance,
-          use_tpu=False,
-          train_batch_size=FLAGS.train_batch_size,
-          eval_batch_size=FLAGS.eval_batch_size,
-          config=run_config,
-          params=eval_params)
-      eval_results = eval_estimator.evaluate(
-          input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
-                                          is_training=False),
-          steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-      logging.info('Eval results: %s', eval_results)
-      ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
-      utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
+    # if FLAGS.eval_after_training:
+    #   # Run evaluation after training finishes.
+    #   eval_params = dict(
+    #       params,
+    #       use_tpu=False,
+    #       input_rand_hflip=False,
+    #       is_training_bn=False,
+    #       use_bfloat16=False,
+    #   )
+    #   eval_estimator = tf.estimator.tpu.TPUEstimator(
+    #       model_fn=model_fn_instance,
+    #       use_tpu=False,
+    #       train_batch_size=FLAGS.train_batch_size,
+    #       eval_batch_size=FLAGS.eval_batch_size,
+    #       config=run_config,
+    #       params=eval_params)
+    #   eval_results = eval_estimator.evaluate(
+    #       input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
+    #                                       is_training=False),
+    #       steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
+    #   logging.info('Eval results: %s', eval_results)
+    #   ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
+    #   utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
 
   elif FLAGS.mode == 'eval':
     # Eval only runs on CPU or GPU host with batch_size = 1.
     # Override the default options: disable randomization in the input pipeline
     # and don't run on the TPU.
     # Also, disable use_bfloat16 for eval on CPU/GPU.
-    eval_params = dict(
-        params,
-        use_tpu=False,
-        input_rand_hflip=False,
-        is_training_bn=False,
-        use_bfloat16=False,
-    )
-
-    eval_estimator = tf.estimator.tpu.TPUEstimator(
-        model_fn=model_fn_instance,
-        use_tpu=False,
-        train_batch_size=FLAGS.train_batch_size,
-        eval_batch_size=FLAGS.eval_batch_size,
-        config=run_config,
-        params=eval_params)
-
-    def terminate_eval():
-      logging.info('Terminating eval after %d seconds of no checkpoints',
-                   FLAGS.eval_timeout)
-      return True
-
-    # Run evaluation when there's a new checkpoint
-    for ckpt in tf.train.checkpoints_iterator(
-        FLAGS.model_dir,
-        min_interval_secs=FLAGS.min_eval_interval,
-        timeout=FLAGS.eval_timeout,
-        timeout_fn=terminate_eval):
-
-      logging.info('Starting to evaluate.')
-      try:
-        eval_results = eval_estimator.evaluate(
-            input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
-                                            is_training=False),
-            steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-        logging.info('Eval results: %s', eval_results)
-
-        # Terminate eval job when final checkpoint is reached.
-        try:
-          current_step = int(os.path.basename(ckpt).split('-')[1])
-        except IndexError:
-          logging.info('%s has no global step info: stop!', ckpt)
-          break
-
-        utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
-        total_step = int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) /
-                         FLAGS.train_batch_size)
-        if current_step >= total_step:
-          logging.info('Evaluation finished after training step %d',
-                       current_step)
-          break
-
-      except tf.errors.NotFoundError:
-        # Since the coordinator is on a different job than the TPU worker,
-        # sometimes the TPU worker does not finish initializing until long after
-        # the CPU job tells it to start evaluating. In this case, the checkpoint
-        # file could have been deleted already.
-        logging.info('Checkpoint %s no longer exists, skipping checkpoint',
-                     ckpt)
+    # eval_params = dict(
+    #     params,
+    #     use_tpu=False,
+    #     input_rand_hflip=False,
+    #     is_training_bn=False,
+    #     use_bfloat16=False,
+    # )
+    #
+    # eval_estimator = tf.estimator.tpu.TPUEstimator(
+    #     model_fn=model_fn_instance,
+    #     use_tpu=False,
+    #     train_batch_size=FLAGS.train_batch_size,
+    #     eval_batch_size=FLAGS.eval_batch_size,
+    #     config=run_config,
+    #     params=eval_params)
+    #
+    # def terminate_eval():
+    #   logging.info('Terminating eval after %d seconds of no checkpoints',
+    #                FLAGS.eval_timeout)
+    #   return True
+    #
+    # # Run evaluation when there's a new checkpoint
+    # for ckpt in tf.train.checkpoints_iterator(
+    #     FLAGS.model_dir,
+    #     min_interval_secs=FLAGS.min_eval_interval,
+    #     timeout=FLAGS.eval_timeout,
+    #     timeout_fn=terminate_eval):
+    #
+    #   logging.info('Starting to evaluate.')
+    #   try:
+    #     eval_results = eval_estimator.evaluate(
+    #         input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
+    #                                         is_training=False),
+    #         steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
+    #     logging.info('Eval results: %s', eval_results)
+    #
+    #     # Terminate eval job when final checkpoint is reached.
+    #     try:
+    #       current_step = int(os.path.basename(ckpt).split('-')[1])
+    #     except IndexError:
+    #       logging.info('%s has no global step info: stop!', ckpt)
+    #       break
+    #
+    #     utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
+    #     total_step = int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) /
+    #                      FLAGS.train_batch_size)
+    #     if current_step >= total_step:
+    #       logging.info('Evaluation finished after training step %d',
+    #                    current_step)
+    #       break
+    #
+    #   except tf.errors.NotFoundError:
+    #     # Since the coordinator is on a different job than the TPU worker,
+    #     # sometimes the TPU worker does not finish initializing until long after
+    #     # the CPU job tells it to start evaluating. In this case, the checkpoint
+    #     # file could have been deleted already.
+    #     logging.info('Checkpoint %s no longer exists, skipping checkpoint',
+    #                  ckpt)
+    pass
 
   elif FLAGS.mode == 'train_and_eval':
-    for cycle in range(FLAGS.num_epochs):
-      logging.info('Starting training cycle, epoch: %d.', cycle)
-      train_estimator = tf.estimator.tpu.TPUEstimator(
-          model_fn=model_fn_instance,
-          use_tpu=FLAGS.use_tpu,
-          train_batch_size=FLAGS.train_batch_size,
-          config=run_config,
-          params=params)
-      train_estimator.train(
-          input_fn=dataloader.InputReader(FLAGS.training_file_pattern,
-                                          is_training=True,
-                                          use_fake_data=FLAGS.use_fake_data),
-          steps=int(FLAGS.num_examples_per_epoch / FLAGS.train_batch_size))
-
-      logging.info('Starting evaluation cycle, epoch: %d.', cycle)
-      # Run evaluation after every epoch.
-      eval_params = dict(
-          params,
-          use_tpu=False,
-          input_rand_hflip=False,
-          is_training_bn=False,
-      )
-
-      eval_estimator = tf.estimator.tpu.TPUEstimator(
-          model_fn=model_fn_instance,
-          use_tpu=False,
-          train_batch_size=FLAGS.train_batch_size,
-          eval_batch_size=FLAGS.eval_batch_size,
-          config=run_config,
-          params=eval_params)
-      eval_results = eval_estimator.evaluate(
-          input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
-                                          is_training=False),
-          steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-      logging.info('Evaluation results: %s', eval_results)
-      ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
-      utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
+    # for cycle in range(FLAGS.num_epochs):
+    #   logging.info('Starting training cycle, epoch: %d.', cycle)
+    #   train_estimator = tf.estimator.tpu.TPUEstimator(
+    #       model_fn=model_fn_instance,
+    #       use_tpu=FLAGS.use_tpu,
+    #       train_batch_size=FLAGS.train_batch_size,
+    #       config=run_config,
+    #       params=params)
+    #   train_estimator.train(
+    #       input_fn=dataloader.InputReader(FLAGS.training_file_pattern,
+    #                                       is_training=True,
+    #                                       use_fake_data=FLAGS.use_fake_data),
+    #       steps=int(FLAGS.num_examples_per_epoch / FLAGS.train_batch_size))
+    #
+    #   logging.info('Starting evaluation cycle, epoch: %d.', cycle)
+    #   # Run evaluation after every epoch.
+    #   eval_params = dict(
+    #       params,
+    #       use_tpu=False,
+    #       input_rand_hflip=False,
+    #       is_training_bn=False,
+    #   )
+    #
+    #   eval_estimator = tf.estimator.tpu.TPUEstimator(
+    #       model_fn=model_fn_instance,
+    #       use_tpu=False,
+    #       train_batch_size=FLAGS.train_batch_size,
+    #       eval_batch_size=FLAGS.eval_batch_size,
+    #       config=run_config,
+    #       params=eval_params)
+    #   eval_results = eval_estimator.evaluate(
+    #       input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
+    #                                       is_training=False),
+    #       steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
+    #   logging.info('Evaluation results: %s', eval_results)
+    #   ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
+    #   utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
+    pass
 
   else:
     logging.info('Mode not found.')

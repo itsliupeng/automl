@@ -31,6 +31,7 @@ import retinanet_arch
 import utils
 from horovod_estimator.hooks import BroadcastGlobalVariablesHook
 from horovod_estimator import show_model
+from horovod_estimator.utis import is_rank0
 
 _DEFAULT_BATCH_SIZE = 64
 
@@ -414,7 +415,8 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
     cls_outputs, box_outputs = _model_outputs()
     levels = cls_outputs.keys()
 
-  show_model()
+  if is_rank0():
+    show_model()
 
   # First check if it is in PREDICT mode.
   if mode == tf.estimator.ModeKeys.PREDICT:
