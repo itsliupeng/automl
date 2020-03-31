@@ -240,6 +240,8 @@ def main(argv):
     num_cores_per_replica = None
     input_partition_dims = None
     num_shards = FLAGS.num_cores
+    if hvd is not None:
+        num_shards = hvd.size()
 
   params = dict(
       config.as_dict(),

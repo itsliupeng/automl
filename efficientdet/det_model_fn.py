@@ -30,7 +30,7 @@ import hparams_config
 import retinanet_arch
 import utils
 from horovod_estimator.hooks import BroadcastGlobalVariablesHook, LoggingTensorHook
-from horovod_estimator import show_model
+from horovod_estimator import show_model, hvd
 from horovod_estimator.utis import is_rank0
 
 _DEFAULT_BATCH_SIZE = 64
@@ -38,9 +38,7 @@ _DEFAULT_BATCH_SIZE = 64
 
 def update_learning_rate_schedule_parameters(params):
   """Updates params that are related to the learning rate schedule."""
-  # params['batch_size'] is per-shard within model_fn if use_tpu=true.
-  batch_size = (params['batch_size'] * params['num_shards'] if params['use_tpu']
-                else params['batch_size'])
+  batch_size = (params['batch_size'] * params['num_shards'])
   # Learning rate is proportional to the batch size
   params['adjusted_learning_rate'] = (params['learning_rate'] * batch_size /
                                       _DEFAULT_BATCH_SIZE)
