@@ -308,6 +308,7 @@ def main(argv):
     train_estimator.train(
         input_fn=dataloader.InputReader(FLAGS.training_file_pattern,
                                         is_training=True,
+                                        params=params,
                                         use_fake_data=FLAGS.use_fake_data),
         max_steps=int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) /
                       FLAGS.train_batch_size))
