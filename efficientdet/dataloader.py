@@ -338,7 +338,6 @@ class InputReader(object):
         return (image, cls_targets, box_targets, num_positives, source_id,
                 image_scale, boxes, is_crowds, areas, classes)
 
-    batch_size = params['batch_size']
     dataset = tf.data.Dataset.list_files(
         self._file_pattern, shuffle=self._is_training)
 
@@ -362,6 +361,7 @@ class InputReader(object):
 
     # Parse the fetched records to input tensors for model function.
     dataset = dataset.map(_dataset_parser, num_parallel_calls=64)
+    batch_size = params['batch_size']
     dataset = dataset.prefetch(batch_size)
     dataset = dataset.batch(batch_size, drop_remainder=True)
 

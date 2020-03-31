@@ -247,9 +247,10 @@ def main(argv):
     #     train_batch_size=FLAGS.train_batch_size,
     #     config=run_config,
     #     params=params)
+    params['batch_size'] = FLAGS.train_batch_size
     train_estimator = HorovodEstimator(
         model_fn=model_fn_instance,
-        model_dir=None,
+        model_dir=FLAGS.model_dir,
         config=run_config,
         params=params)
 
