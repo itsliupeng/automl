@@ -30,6 +30,7 @@ import dataloader
 import det_model_fn
 import hparams_config
 import utils
+from horovod_estimator import HorovodEstimator
 
 
 # Cloud TPU Cluster Resolvers
@@ -201,7 +202,6 @@ def main(argv):
       config.as_dict(),
       model_name=FLAGS.model_name,
       num_epochs=FLAGS.num_epochs,
-
       iterations_per_loop=FLAGS.iterations_per_loop,
       model_dir=FLAGS.model_dir,
       num_shards=num_shards,
@@ -241,12 +241,18 @@ def main(argv):
   # TPU Estimator
   logging.info(params)
   if FLAGS.mode == 'train':
-    train_estimator = tf.estimator.tpu.TPUEstimator(
+    # train_estimator = tf.estimator.tpu.TPUEstimator(
+    #     model_fn=model_fn_instance,
+    #     use_tpu=FLAGS.use_tpu,
+    #     train_batch_size=FLAGS.train_batch_size,
+    #     config=run_config,
+    #     params=params)
+    train_estimator = HorovodEstimator(
         model_fn=model_fn_instance,
-        use_tpu=FLAGS.use_tpu,
-        train_batch_size=FLAGS.train_batch_size,
+        model_dir=None,
         config=run_config,
         params=params)
+
     train_estimator.train(
         input_fn=dataloader.InputReader(FLAGS.training_file_pattern,
                                         is_training=True,

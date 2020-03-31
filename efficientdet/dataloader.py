@@ -21,6 +21,7 @@ https://github.com/tensorflow/tpu/blob/master/models/official/retinanet/anchors.
 import tensorflow.compat.v1 as tf
 
 import anchors
+from horovod_estimator import hvd
 from object_detection import preprocessor
 from object_detection import tf_example_decoder
 
@@ -340,6 +341,11 @@ class InputReader(object):
     batch_size = params['batch_size']
     dataset = tf.data.Dataset.list_files(
         self._file_pattern, shuffle=self._is_training)
+
+    if hvd is not None:
+      # 根据 GPU 数量做 shard 均分
+      dataset = dataset.shard(hvd.size(), hvd.rank())
+
     if self._is_training:
       dataset = dataset.repeat()
 
