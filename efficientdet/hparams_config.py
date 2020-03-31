@@ -187,7 +187,10 @@ def default_detection_configs():
 
   h.lr_decay_method = 'cosine'
   h.moving_average_decay = 0.9998
-  h.ckpt_var_scope = None
+  h.ckpt_var_scope = None  # ckpt variable scope.
+  # exclude vars when loading pretrained ckpts.
+  h.var_exclude_expr = '.*/class-predict/.*'  # exclude class weights in default
+
   h.backbone_name = 'efficientnet-b1'
   h.backbone_config = None
 
