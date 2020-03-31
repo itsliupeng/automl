@@ -583,7 +583,7 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
       mode=mode,
       loss=total_loss,
       train_op=train_op,
-      eval_metrics=eval_metrics,
+      eval_metric_ops=eval_metrics,
       # host_call=utils.get_tpu_host_call(global_step, params),
       scaffold_fn=scaffold_fn)
 
