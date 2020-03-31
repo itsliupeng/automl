@@ -53,11 +53,9 @@ flags.DEFINE_string(
     help='GRPC URL of the eval master. Set to an appropriate value when running'
     ' on CPU/GPU')
 flags.DEFINE_bool('use_tpu', True, 'Use TPUs rather than CPUs/GPUs')
+flags.DEFINE_bool('use_amp', False, 'Use AMP')
+flags.DEFINE_bool('use_xla', False, 'Use XLA')
 flags.DEFINE_bool('use_fake_data', False, 'Use fake input.')
-flags.DEFINE_bool(
-    'use_xla', False,
-    'Use XLA even if use_tpu is false.  If use_tpu is true, we always use XLA, '
-    'and this flag has no effect.')
 flags.DEFINE_string('model_dir', None, 'Location of model_dir')
 flags.DEFINE_string('backbone_ckpt', '',
                     'Location of the ResNet50 checkpoint to use for model '
@@ -168,7 +166,7 @@ def main(argv):
   del argv  # Unused.
 
   hvd_try_init()
-  set_env(False)
+  set_env(use_amp=FLAGS.use_amp)
 
 
   # Check data path
@@ -282,7 +280,7 @@ def main(argv):
   # )
 
   run_config = tf.estimator.RunConfig(
-      session_config=get_session_config(False),
+      session_config=get_session_config(use_xla=FLAGS.use_xla),
       save_checkpoints_steps=200)
 
   model_fn_instance = det_model_fn.get_model_fn(FLAGS.model_name)
