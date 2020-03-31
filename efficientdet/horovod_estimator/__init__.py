@@ -34,3 +34,30 @@ def get_filenames(data_dir: str, filename_regexp: str, show_result=True):
     if show_result:
         hvd_info_rank0('find {} files in {}, such as {}'.format(len(filenames), data_dir, filenames[0:5]))
     return filenames
+
+
+def _idx_a_minus_b(a, b):
+    a_splits = a.split('/')
+    b_splits = b.split('/')
+    for i in range(min(len(a_splits), len(b_splits))):
+        if a_splits[i] != b_splits[i]:
+            break
+
+    return len('/'.join(a_splits[0:i]))
+
+
+def show_model():
+    prev = None
+    for var in tf.global_variables():
+        if var.name.split('/')[-1] in ['beta:0', 'moving_mean:0', 'moving_variance:0']:
+            continue
+
+        if prev is None:
+            print('{} - {}'.format(var.name, var.shape.as_list()))
+        else:
+            idx = _idx_a_minus_b(var.name, prev.name)
+            short_name = var.name[idx:]
+            if short_name.startswith('/bn'):
+                short_name = '/bn'
+            print('{}{} - {}'.format(' ' * idx, short_name, var.shape.as_list()))
+        prev = var
