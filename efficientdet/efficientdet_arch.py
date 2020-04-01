@@ -460,7 +460,7 @@ def build_bifpn_layer(
   num_output_connections = [0 for _ in feats]
   for i, fnode in enumerate(config.nodes):
     with tf.variable_scope('fnode{}'.format(i)):
-      hvd_info_rank0('fnode %d : %s', i, fnode)
+      hvd_info_rank0(f'fnode {i} : {fnode}')
       new_node_width = int(fnode['width_ratio'] * input_size)
       nodes = []
       for idx, input_offset in enumerate(fnode['inputs_offsets']):
