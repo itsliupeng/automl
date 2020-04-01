@@ -540,53 +540,58 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
     add_metric_fn_inputs(params, cls_outputs, box_outputs, metric_fn_inputs)
     eval_metrics = (metric_fn, metric_fn_inputs)
 
-  checkpoint = params.get('ckpt') or params.get('backbone_ckpt')
+  # only rank0 to restore, then broadcast variables
+  if is_rank0():
+      checkpoint = params.get('ckpt') or params.get('backbone_ckpt')
+      if checkpoint and mode == tf.estimator.ModeKeys.TRAIN:
+        # Initialize the model from an EfficientDet or backbone checkpoint.
+        if params.get('ckpt') and params.get('backbone_ckpt'):
+          raise RuntimeError(
+              '--backbone_ckpt and --checkpoint are mutually exclusive')
+        elif params.get('backbone_ckpt'):
+          var_scope = params['backbone_name'] + '/'
+          if params['ckpt_var_scope'] is None:
+            # Use backbone name as default checkpoint scope.
+            ckpt_scope = params['backbone_name'] + '/'
+          else:
+            ckpt_scope = params['ckpt_var_scope'] + '/'
+        else:
+          # Load every var in the given checkpoint
+          var_scope = ckpt_scope = '/'
 
-  if checkpoint and mode == tf.estimator.ModeKeys.TRAIN:
-    # Initialize the model from an EfficientDet or backbone checkpoint.
-    if params.get('ckpt') and params.get('backbone_ckpt'):
-      raise RuntimeError(
-          '--backbone_ckpt and --checkpoint are mutually exclusive')
-    elif params.get('backbone_ckpt'):
-      var_scope = params['backbone_name'] + '/'
-      if params['ckpt_var_scope'] is None:
-        # Use backbone name as default checkpoint scope.
-        ckpt_scope = params['backbone_name'] + '/'
+        def scaffold_fn():
+          """Loads pretrained model through scaffold function."""
+          logging.info('restore variables from %s', checkpoint)
+
+          var_map = utils.get_ckpt_var_map(
+              ckpt_path=checkpoint,
+              ckpt_scope=ckpt_scope,
+              var_scope=var_scope,
+              var_exclude_expr=params.get('var_exclude_expr', None))
+
+          tf.train.init_from_checkpoint(checkpoint, var_map)
+
+          return tf.train.Scaffold()
+      elif mode == tf.estimator.ModeKeys.EVAL and moving_average_decay:
+        def scaffold_fn():
+          """Load moving average variables for eval."""
+          logging.info('Load EMA vars with ema_decay=%f', moving_average_decay)
+          restore_vars_dict = ema.variables_to_restore(ema_vars)
+          saver = tf.train.Saver(restore_vars_dict)
+          return tf.train.Scaffold(saver=saver)
       else:
-        ckpt_scope = params['ckpt_var_scope'] + '/'
-    else:
-      # Load every var in the given checkpoint
-      var_scope = ckpt_scope = '/'
-
-    def scaffold_fn():
-      """Loads pretrained model through scaffold function."""
-      logging.info('restore variables from %s', checkpoint)
-
-      var_map = utils.get_ckpt_var_map(
-          ckpt_path=checkpoint,
-          ckpt_scope=ckpt_scope,
-          var_scope=var_scope,
-          var_exclude_expr=params.get('var_exclude_expr', None))
-
-      tf.train.init_from_checkpoint(checkpoint, var_map)
-
-      return tf.train.Scaffold()
-  elif mode == tf.estimator.ModeKeys.EVAL and moving_average_decay:
-    def scaffold_fn():
-      """Load moving average variables for eval."""
-      logging.info('Load EMA vars with ema_decay=%f', moving_average_decay)
-      restore_vars_dict = ema.variables_to_restore(ema_vars)
-      saver = tf.train.Saver(restore_vars_dict)
-      return tf.train.Scaffold(saver=saver)
+        scaffold_fn = None
   else:
-    scaffold_fn = None
+      scaffold_fn = None
 
-  init_weights_hook = BroadcastGlobalVariablesHook(root_rank=0,
-                                                    model_dir=params['model_dir'])
+  init_weights_hook = BroadcastGlobalVariablesHook(root_rank=0, model_dir=params['model_dir'])
+  training_hooks = [init_weights_hook]
 
-  logging_hook = LoggingTensorHook(dict(utils.get_scalar_summaries()), summary_dir=params['model_dir'])
+  if is_rank0():
+    logging_hook = LoggingTensorHook(dict(utils.get_scalar_summaries()), summary_dir=params['model_dir'])
+    training_hooks.append(logging_hook)
 
-  training_hooks = [init_weights_hook, logging_hook]
+
   return tf.estimator.EstimatorSpec(
       mode=mode,
       loss=total_loss,

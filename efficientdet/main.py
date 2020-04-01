@@ -282,7 +282,7 @@ def main(argv):
 
   run_config = tf.estimator.RunConfig(
       session_config=get_session_config(use_xla=FLAGS.use_xla),
-      save_checkpoints_steps=200)
+      save_checkpoints_steps=600)
 
   model_fn_instance = det_model_fn.get_model_fn(FLAGS.model_name)
 

@@ -32,6 +32,7 @@ import hparams_config
 import utils
 from backbone import efficientnet_builder
 
+from horovod_estimator import hvd_info_rank0
 
 ################################################################################
 def nearest_upsampling(data, scale):
@@ -379,7 +380,7 @@ def build_feature_network(features, config):
   with tf.variable_scope('fpn_cells'):
     for rep in range(config.fpn_cell_repeats):
       with tf.variable_scope('cell_{}'.format(rep)):
-        logging.info('building cell %d', rep)
+        hvd_info_rank0('building cell %d', rep)
         new_feats = build_bifpn_layer(
             feats=feats,
             fpn_name=config.fpn_name,
@@ -459,7 +460,7 @@ def build_bifpn_layer(
   num_output_connections = [0 for _ in feats]
   for i, fnode in enumerate(config.nodes):
     with tf.variable_scope('fnode{}'.format(i)):
-      logging.info('fnode %d : %s', i, fnode)
+      hvd_info_rank0('fnode %d : %s', i, fnode)
       new_node_width = int(fnode['width_ratio'] * input_size)
       nodes = []
       for idx, input_offset in enumerate(fnode['inputs_offsets']):
@@ -545,21 +546,21 @@ def efficientdet(features, model_name=None, config=None, **kwargs):
   if kwargs:
     config.override(kwargs)
 
-  logging.info(config)
+  hvd_info_rank0(config)
 
   # build backbone features.
   features = build_backbone(features, config)
-  logging.info('backbone params/flops = {:.6f}M, {:.9f}B'.format(
+  hvd_info_rank0('backbone params/flops = {:.6f}M, {:.9f}B'.format(
       *utils.num_params_flops()))
 
   # build feature network.
   fpn_feats = build_feature_network(features, config)
-  logging.info('backbone+fpn params/flops = {:.6f}M, {:.9f}B'.format(
+  hvd_info_rank0('backbone+fpn params/flops = {:.6f}M, {:.9f}B'.format(
       *utils.num_params_flops()))
 
   # build class and box predictions.
   class_outputs, box_outputs = build_class_and_box_outputs(fpn_feats, config)
-  logging.info('backbone+fpn+box params/flops = {:.6f}M, {:.9f}B'.format(
+  hvd_info_rank0('backbone+fpn+box params/flops = {:.6f}M, {:.9f}B'.format(
       *utils.num_params_flops()))
 
   return class_outputs, box_outputs
