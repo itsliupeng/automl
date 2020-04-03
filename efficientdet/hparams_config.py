@@ -145,7 +145,7 @@ def default_detection_configs():
   h.aspect_ratios = [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)]
   h.anchor_scale = 4.0
   # is batchnorm training mode
-  h.is_training_bn = True
+  h.is_training_bn = False
   # optimization
   h.momentum = 0.9
   h.learning_rate = 0.08

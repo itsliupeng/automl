@@ -250,7 +250,7 @@ def batch_norm_class(is_training):
   #   return TpuBatchNormalization
   # else:
   #   return BatchNormalization
-  return SyncBatchNormalization
+  return BatchNormalization
 
 
 def tpu_batch_normalization(inputs, training=False, **kwargs):
