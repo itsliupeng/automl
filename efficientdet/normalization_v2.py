@@ -24,7 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 import normalization
-from horovod_estimator import hvd
+from horovod_estimator import hvd, hvd_info
 
 
 # pylint: disable=g-classes-have-attributes
@@ -175,8 +175,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
                 # y_sum, y_squared_sum, global_batch_size = (
                 #     replica_ctx.all_reduce(reduce_util.ReduceOp.SUM, [
                 #         local_sum, local_squared_sum, batch_size]))
-                import pdb
-                pdb.set_trace()
+
+                hvd_info(f'local_sum {local_sum.shape}, local_squared_sum {local_squared_sum.shape}')
 
                 y_sum = hvd.allreduce(local_sum, average=False)
                 y_squared_sum = hvd.allreduce(local_squared_sum, average=False)
