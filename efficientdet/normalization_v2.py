@@ -175,10 +175,13 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
                 # y_sum, y_squared_sum, global_batch_size = (
                 #     replica_ctx.all_reduce(reduce_util.ReduceOp.SUM, [
                 #         local_sum, local_squared_sum, batch_size]))
+                import pdb
+                pdb.set_trace()
+
                 y_sum = hvd.allreduce(local_sum, average=False)
                 y_squared_sum = hvd.allreduce(local_squared_sum, average=False)
-                global_batch_size = hvd.allreduce(batch_size, average=False)
 
+                global_batch_size = batch_size * num_shards
                 axes_vals = [(array_ops.shape_v2(y))[i] for i in range(1, len(axes))]
                 multiplier = math_ops.cast(math_ops.reduce_prod(axes_vals), dtypes.float32)
                 multiplier = multiplier * global_batch_size
