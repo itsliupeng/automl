@@ -29,6 +29,7 @@ from absl import logging
 from tensorflow.python.tpu import tpu_function  # pylint:disable=g-direct-tensorflow-import
 
 from horovod_estimator import hvd
+import normalization_v2
 
 relu_fn = tf.nn.swish
 backbone_relu_fn = relu_fn
@@ -246,15 +247,14 @@ class BatchNormalization(tf.layers.BatchNormalization):
 
 
 def batch_norm_class(is_training):
-  # if is_training:
-  #   return TpuBatchNormalization
-  # else:
-  #   return BatchNormalization
-  return BatchNormalization
+  if is_training:
+    return normalization_v2.SyncBatchNormalization
+  else:
+    return BatchNormalization
 
 
-def tpu_batch_normalization(inputs, training=False, **kwargs):
-  """A wrapper for TpuBatchNormalization."""
+def batch_normalization(inputs, training=False, **kwargs):
+  """A wrapper for BatchNormalization."""
   layer = batch_norm_class(training)(**kwargs)
   return layer.apply(inputs, training=training)
 
@@ -294,7 +294,7 @@ def batch_norm_relu(inputs,
   else:
     axis = 3
 
-  inputs = tpu_batch_normalization(
+  inputs = batch_normalization(
       inputs=inputs,
       axis=axis,
       momentum=momentum,
