@@ -175,10 +175,9 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
                 # y_sum, y_squared_sum, global_batch_size = (
                 #     replica_ctx.all_reduce(reduce_util.ReduceOp.SUM, [
                 #         local_sum, local_squared_sum, batch_size]))
-                y_sum, y_squared_sum, global_batch_size = hvd.allredcue(local_sum, local_squared_sum, batch_size)
-                y_sum = hvd.allreduce(local_sum, average=True)
-                y_squared_sum = hvd.allreduce(local_squared_sum, average=True)
-                global_batch_size = hvd.allreduce(batch_size, average=True)
+                y_sum = hvd.allreduce(local_sum, average=False)
+                y_squared_sum = hvd.allreduce(local_squared_sum, average=False)
+                global_batch_size = hvd.allreduce(batch_size, average=False)
 
                 axes_vals = [(array_ops.shape_v2(y))[i] for i in range(1, len(axes))]
                 multiplier = math_ops.cast(math_ops.reduce_prod(axes_vals), dtypes.float32)
