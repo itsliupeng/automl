@@ -247,10 +247,11 @@ class BatchNormalization(tf.layers.BatchNormalization):
 
 
 def batch_norm_class(is_training):
-  if is_training:
-    return normalization_v2.SyncBatchNormalization
-  else:
-    return BatchNormalization
+  # if is_training:
+  #   return normalization_v2.SyncBatchNormalization
+  # else:
+  #   return BatchNormalization
+  return normalization_v2.SyncBatchNormalization
 
 
 def batch_normalization(inputs, training=False, **kwargs):

@@ -132,6 +132,10 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
                  **kwargs):
 
         # Currently we only support aggregating over the global batch size.
+
+        if name is None:
+            name = 'tpu_batch_normalization'
+
         super(SyncBatchNormalization, self).__init__(
             axis=axis,
             momentum=momentum,
@@ -176,7 +180,7 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
                 #     replica_ctx.all_reduce(reduce_util.ReduceOp.SUM, [
                 #         local_sum, local_squared_sum, batch_size]))
 
-                hvd_info(f'local_sum {local_sum.shape}, local_squared_sum {local_squared_sum.shape}')
+                # hvd_info(f'local_sum {local_sum.shape}, local_squared_sum {local_squared_sum.shape}')
 
                 y_sum = hvd.allreduce(local_sum, average=False)
                 y_squared_sum = hvd.allreduce(local_squared_sum, average=False)
