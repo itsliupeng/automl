@@ -231,15 +231,16 @@ def pad_to_fixed_size(data, pad_value, output_shape):
 class InputReader(object):
   """Input reader for dataset."""
 
-  def __init__(self, file_pattern, is_training, params, use_fake_data=False):
+  def __init__(self, file_pattern, is_training, params=None, use_fake_data=False):
     self._file_pattern = file_pattern
     self._is_training = is_training
     self._use_fake_data = use_fake_data
     self._max_num_instances = MAX_NUM_INSTANCES
     self._params = params
 
-  def __call__(self):
-    params = self._params
+  def __call__(self, params=None):
+    if params is None:
+      params = self._params
     input_anchors = anchors.Anchors(params['min_level'], params['max_level'],
                                     params['num_scales'],
                                     params['aspect_ratios'],

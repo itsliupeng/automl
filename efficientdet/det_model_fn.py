@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-from absl import logging
+
 import numpy as np
 import tensorflow.compat.v1 as tf
+from absl import logging
 
 import anchors
 import coco_metric
@@ -29,8 +30,8 @@ import efficientdet_arch
 import hparams_config
 import retinanet_arch
 import utils
-from horovod_estimator.hooks import BroadcastGlobalVariablesHook, LoggingTensorHook
 from horovod_estimator import show_model, hvd
+from horovod_estimator.hooks import BroadcastGlobalVariablesHook, LoggingTensorHook
 from horovod_estimator.utis import is_rank0
 
 _DEFAULT_BATCH_SIZE = 64
@@ -455,6 +456,9 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
     optimizer = tf.train.MomentumOptimizer(
         learning_rate, momentum=params['momentum'])
 
+    if not isinstance(optimizer, hvd._DistributedOptimizer):
+        optimizer = hvd.DistributedOptimizer(optimizer)
+
     # Batch norm requires update_ops to be added as a train_op dependency.
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     var_list = tf.trainable_variables()
@@ -542,47 +546,47 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
 
   # only rank0 to restore, then broadcast variables
   if is_rank0():
-      checkpoint = params.get('ckpt') or params.get('backbone_ckpt')
-      if checkpoint and mode == tf.estimator.ModeKeys.TRAIN:
-        # Initialize the model from an EfficientDet or backbone checkpoint.
-        if params.get('ckpt') and params.get('backbone_ckpt'):
-          raise RuntimeError(
-              '--backbone_ckpt and --checkpoint are mutually exclusive')
-        elif params.get('backbone_ckpt'):
-          var_scope = params['backbone_name'] + '/'
-          if params['ckpt_var_scope'] is None:
-            # Use backbone name as default checkpoint scope.
-            ckpt_scope = params['backbone_name'] + '/'
-          else:
-            ckpt_scope = params['ckpt_var_scope'] + '/'
+    checkpoint = params.get('ckpt') or params.get('backbone_ckpt')
+    if checkpoint and mode == tf.estimator.ModeKeys.TRAIN:
+      # Initialize the model from an EfficientDet or backbone checkpoint.
+      if params.get('ckpt') and params.get('backbone_ckpt'):
+        raise RuntimeError(
+          '--backbone_ckpt and --checkpoint are mutually exclusive')
+      elif params.get('backbone_ckpt'):
+        var_scope = params['backbone_name'] + '/'
+        if params['ckpt_var_scope'] is None:
+          # Use backbone name as default checkpoint scope.
+          ckpt_scope = params['backbone_name'] + '/'
         else:
-          # Load every var in the given checkpoint
-          var_scope = ckpt_scope = '/'
-
-        def scaffold_fn():
-          """Loads pretrained model through scaffold function."""
-          logging.info('restore variables from %s', checkpoint)
-
-          var_map = utils.get_ckpt_var_map(
-              ckpt_path=checkpoint,
-              ckpt_scope=ckpt_scope,
-              var_scope=var_scope,
-              var_exclude_expr=params.get('var_exclude_expr', None))
-
-          tf.train.init_from_checkpoint(checkpoint, var_map)
-
-          return tf.train.Scaffold()
-      elif mode == tf.estimator.ModeKeys.EVAL and moving_average_decay:
-        def scaffold_fn():
-          """Load moving average variables for eval."""
-          logging.info('Load EMA vars with ema_decay=%f', moving_average_decay)
-          restore_vars_dict = ema.variables_to_restore(ema_vars)
-          saver = tf.train.Saver(restore_vars_dict)
-          return tf.train.Scaffold(saver=saver)
+          ckpt_scope = params['ckpt_var_scope'] + '/'
       else:
-        scaffold_fn = None
-  else:
+        # Load every var in the given checkpoint
+        var_scope = ckpt_scope = '/'
+
+      def scaffold_fn():
+        """Loads pretrained model through scaffold function."""
+        logging.info('restore variables from %s', checkpoint)
+
+        var_map = utils.get_ckpt_var_map(
+          ckpt_path=checkpoint,
+          ckpt_scope=ckpt_scope,
+          var_scope=var_scope,
+          var_exclude_expr=params.get('var_exclude_expr', None))
+
+        tf.train.init_from_checkpoint(checkpoint, var_map)
+
+        return tf.train.Scaffold()
+    elif mode == tf.estimator.ModeKeys.EVAL and moving_average_decay:
+      def scaffold_fn():
+        """Load moving average variables for eval."""
+        logging.info('Load EMA vars with ema_decay=%f', moving_average_decay)
+        restore_vars_dict = ema.variables_to_restore(ema_vars)
+        saver = tf.train.Saver(restore_vars_dict)
+        return tf.train.Scaffold(saver=saver)
+    else:
       scaffold_fn = None
+  else:
+    scaffold_fn = None
 
   init_weights_hook = BroadcastGlobalVariablesHook(root_rank=0, model_dir=params['model_dir'])
   training_hooks = [init_weights_hook]
@@ -591,17 +595,22 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
     logging_hook = LoggingTensorHook(dict(utils.get_scalar_summaries()), summary_dir=params['model_dir'])
     training_hooks.append(logging_hook)
 
-
-  return tf.estimator.EstimatorSpec(
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    return tf.estimator.EstimatorSpec(
       mode=mode,
       loss=total_loss,
       train_op=train_op,
-      eval_metric_ops=eval_metrics,
-      # host_call=utils.get_tpu_host_call(global_step, params),
       scaffold=scaffold_fn() if scaffold_fn is not None else None,
       training_hooks=training_hooks
-  )
-
+    )
+  else:
+    return tf.estimator.tpu.TPUEstimatorSpec(
+      mode=mode,
+      loss=total_loss,
+      train_op=train_op,
+      eval_metrics=eval_metrics,
+      host_call=utils.get_tpu_host_call(global_step, params),
+      scaffold_fn=scaffold_fn)
 
 def retinanet_model_fn(features, labels, mode, params):
   """RetinaNet model."""

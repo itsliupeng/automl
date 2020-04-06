@@ -128,13 +128,15 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
                  renorm_momentum=0.99,
                  trainable=True,
                  adjustment=None,
-                 name=None,
                  **kwargs):
 
         # Currently we only support aggregating over the global batch size.
 
-        if name is None:
-            name = 'tpu_batch_normalization'
+        # if name is None:
+        #     name = 'tpu_batch_normalization'
+
+        if not kwargs.get('name', None):
+            kwargs['name'] = 'tpu_batch_normalization'
 
         super(SyncBatchNormalization, self).__init__(
             axis=axis,
@@ -156,7 +158,6 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
             fused=False,
             trainable=trainable,
             virtual_batch_size=None,
-            name=name,
             **kwargs)
 
     def _calculate_mean_and_var(self, x, axes, keep_dims):

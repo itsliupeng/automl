@@ -49,8 +49,8 @@ def _idx_a_minus_b(a, b):
 def show_model():
     prev = None
     for var in tf.global_variables():
-        if var.name.split('/')[-1] in ['beta:0', 'moving_mean:0', 'moving_variance:0']:
-            continue
+        # if var.name.split('/')[-1] in ['beta:0', 'moving_mean:0', 'moving_variance:0']:
+        #     continue
 
         if prev is None:
             print('{} - {}'.format(var.name, var.shape.as_list()))
