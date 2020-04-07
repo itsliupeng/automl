@@ -592,7 +592,7 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
   training_hooks = [init_weights_hook]
 
   if is_rank0():
-    logging_hook = LoggingTensorHook(dict(utils.get_scalar_summaries()), summary_dir=params['model_dir'])
+    logging_hook = LoggingTensorHook(dict(utils.summaries), summary_dir=params['model_dir'])
     training_hooks.append(logging_hook)
 
   if mode == tf.estimator.ModeKeys.TRAIN:
