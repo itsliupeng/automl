@@ -21,12 +21,15 @@ from __future__ import print_function
 
 import os
 import re
-from absl import logging
+
 import numpy as np
 import tensorflow.compat.v1 as tf
 import tensorflow.compat.v2 as tf2
-
+from absl import logging
 from tensorflow.python.tpu import tpu_function  # pylint:disable=g-direct-tensorflow-import
+
+from horovod_estimator import hvd
+import normalization_v2
 
 relu_fn = tf.nn.swish
 backbone_relu_fn = relu_fn
@@ -205,6 +208,35 @@ class TpuBatchNormalization(tf.layers.BatchNormalization):
       return (shard_mean, shard_variance)
 
 
+class SyncBatchNormalization(tf.layers.BatchNormalization):
+  # class TpuBatchNormalization(tf.layers.BatchNormalization):
+  """Cross replica batch normalization."""
+
+  def __init__(self, fused=False, **kwargs):
+    if fused in (True, None):
+      raise ValueError('SyncBatchNormalization does not support fused=True.')
+    if not kwargs.get('name', None):
+      kwargs['name'] = 'tpu_batch_normalization'
+    super(SyncBatchNormalization, self).__init__(fused=fused, **kwargs)
+
+  def _moments(self, inputs, reduction_axes, keep_dims):
+    """Compute the mean and variance: it overrides the original _moments."""
+    shard_mean, shard_variance = super(SyncBatchNormalization, self)._moments(
+      inputs, reduction_axes, keep_dims=keep_dims)
+
+    num_shards = hvd.size()
+    if num_shards > 1:
+      # Compute variance using: Var[X]= E[X^2] - E[X]^2.
+      shard_square_of_mean = tf.math.square(shard_mean)
+      shard_mean_of_square = shard_variance + shard_square_of_mean
+      group_mean = hvd.allreduce(shard_mean)
+      group_mean_of_square = hvd.allreduce(shard_mean_of_square)
+      group_variance = group_mean_of_square - tf.math.square(group_mean)
+      return (group_mean, group_variance)
+    else:
+      return (shard_mean, shard_variance)
+
+
 class BatchNormalization(tf.layers.BatchNormalization):
   """Fixed default name of BatchNormalization to match TpuBatchNormalization."""
 
@@ -216,13 +248,13 @@ class BatchNormalization(tf.layers.BatchNormalization):
 
 def batch_norm_class(is_training):
   if is_training:
-    return TpuBatchNormalization
+    return SyncBatchNormalization
   else:
     return BatchNormalization
 
 
-def tpu_batch_normalization(inputs, training=False, **kwargs):
-  """A wrapper for TpuBatchNormalization."""
+def batch_normalization(inputs, training=False, **kwargs):
+  """A wrapper for BatchNormalization."""
   layer = batch_norm_class(training)(**kwargs)
   return layer.apply(inputs, training=training)
 
@@ -262,7 +294,7 @@ def batch_norm_relu(inputs,
   else:
     axis = 3
 
-  inputs = tpu_batch_normalization(
+  inputs = batch_normalization(
       inputs=inputs,
       axis=axis,
       momentum=momentum,

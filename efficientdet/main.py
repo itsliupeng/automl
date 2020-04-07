@@ -18,19 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
 import os
-
-from absl import flags
-from absl import logging
 
 import numpy as np
 import tensorflow.compat.v1 as tf
+from absl import flags
+from absl import logging
 
 import dataloader
 import det_model_fn
 import hparams_config
 import utils
-
+from horovod_estimator import HorovodEstimator, hvd_try_init, hvd_info_rank0, hvd
 
 # Cloud TPU Cluster Resolvers
 flags.DEFINE_string(
@@ -53,11 +53,9 @@ flags.DEFINE_string(
     help='GRPC URL of the eval master. Set to an appropriate value when running'
     ' on CPU/GPU')
 flags.DEFINE_bool('use_tpu', True, 'Use TPUs rather than CPUs/GPUs')
+flags.DEFINE_bool('use_amp', False, 'Use AMP')
+flags.DEFINE_bool('use_xla', False, 'Use XLA')
 flags.DEFINE_bool('use_fake_data', False, 'Use fake input.')
-flags.DEFINE_bool(
-    'use_xla', False,
-    'Use XLA even if use_tpu is false.  If use_tpu is true, we always use XLA, '
-    'and this flag has no effect.')
 flags.DEFINE_string('model_dir', None, 'Location of model_dir')
 flags.DEFINE_string('backbone_ckpt', '',
                     'Location of the ResNet50 checkpoint to use for model '
@@ -114,18 +112,63 @@ flags.DEFINE_integer(
 FLAGS = flags.FLAGS
 
 
+def set_env(use_amp, use_fast_math=False):
+    os.environ['CUDA_CACHE_DISABLE'] = '0'
+    os.environ['HOROVOD_GPU_ALLREDUCE'] = 'NCCL'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
+    os.environ['TF_GPU_THREAD_COUNT'] = '1' if hvd is None else str(hvd.size())
+    os.environ['TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT'] = '1'
+    os.environ['TF_ADJUST_HUE_FUSED'] = '1'
+    os.environ['TF_ADJUST_SATURATION_FUSED'] = '1'
+    os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
+    os.environ['TF_SYNC_ON_FINISH'] = '0'
+    os.environ['TF_AUTOTUNE_THRESHOLD'] = '2'
+    os.environ['TF_DISABLE_NVTX_RANGES'] = '1'
+
+    if use_amp:
+        hvd_info_rank0("AMP is activated")
+        os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
+        os.environ['TF_ENABLE_AUTO_MIXED_PRECISION_GRAPH_REWRITE'] = '1'
+        os.environ['TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING'] = '1'
+
+    if use_fast_math:
+        hvd_info_rank0("use_fast_math is activated")
+        os.environ['TF_ENABLE_CUBLAS_TENSOR_OP_MATH_FP32'] = '1'
+        os.environ['TF_ENABLE_CUDNN_TENSOR_OP_MATH_FP32'] = '1'
+        os.environ['TF_ENABLE_CUDNN_RNN_TENSOR_OP_MATH_FP32'] = '1'
+
+
+def get_session_config(use_xla):
+    config = tf.ConfigProto()
+
+    config.allow_soft_placement = True
+    config.log_device_placement = False
+    config.gpu_options.allow_growth = True
+
+    if hvd is not None:
+        config.gpu_options.visible_device_list = str(hvd.local_rank())
+
+    if use_xla:
+        hvd_info_rank0("XLA is activated - Experimental Feature")
+        config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+
+    config.gpu_options.force_gpu_compatible = True  # Force pinned memory
+
+    config.intra_op_parallelism_threads = 1  # Avoid pool of Eigen threads
+    if hvd is not None:
+        config.inter_op_parallelism_threads = max(2, (multiprocessing.cpu_count() // hvd.size()) - 2)
+    else:
+        config.inter_op_parallelism_threads = 4
+
+    return config
+
 def main(argv):
   del argv  # Unused.
 
-  if FLAGS.use_tpu:
-    tpu_cluster_resolver = tf.distribute.cluster_resolver.TPUClusterResolver(
-        FLAGS.tpu,
-        zone=FLAGS.tpu_zone,
-        project=FLAGS.gcp_project)
-    tpu_grpc_url = tpu_cluster_resolver.get_master()
-    tf.Session.reset(tpu_grpc_url)
-  else:
-    tpu_cluster_resolver = None
+  hvd_try_init()
+  set_env(use_amp=FLAGS.use_amp)
+
 
   # Check data path
   if FLAGS.mode in ('train',
@@ -196,12 +239,13 @@ def main(argv):
     num_cores_per_replica = None
     input_partition_dims = None
     num_shards = FLAGS.num_cores
+    if hvd is not None:
+        num_shards = hvd.size()
 
   params = dict(
       config.as_dict(),
       model_name=FLAGS.model_name,
       num_epochs=FLAGS.num_epochs,
-
       iterations_per_loop=FLAGS.iterations_per_loop,
       model_dir=FLAGS.model_dir,
       num_shards=num_shards,
@@ -213,72 +257,85 @@ def main(argv):
       testdev_dir=FLAGS.testdev_dir,
       mode=FLAGS.mode,
   )
-  config_proto = tf.ConfigProto(
-      allow_soft_placement=True, log_device_placement=False)
-  if FLAGS.use_xla and not FLAGS.use_tpu:
-    config_proto.graph_options.optimizer_options.global_jit_level = (
-        tf.OptimizerOptions.ON_1)
 
-  tpu_config = tf.estimator.tpu.TPUConfig(
-      FLAGS.iterations_per_loop,
-      num_shards=num_shards,
-      num_cores_per_replica=num_cores_per_replica,
-      input_partition_dims=input_partition_dims,
-      per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig
-      .PER_HOST_V2)
-
-  run_config = tf.estimator.tpu.RunConfig(
-      cluster=tpu_cluster_resolver,
-      evaluation_master=FLAGS.eval_master,
-      model_dir=FLAGS.model_dir,
-      log_step_count_steps=FLAGS.iterations_per_loop,
-      session_config=config_proto,
-      tpu_config=tpu_config,
-  )
+  run_config = tf.estimator.RunConfig(
+      session_config=get_session_config(use_xla=FLAGS.use_xla),
+      save_checkpoints_steps=600)
 
   model_fn_instance = det_model_fn.get_model_fn(FLAGS.model_name)
 
   # TPU Estimator
   logging.info(params)
   if FLAGS.mode == 'train':
-    train_estimator = tf.estimator.tpu.TPUEstimator(
+    # train_estimator = tf.estimator.tpu.TPUEstimator(
+    #     model_fn=model_fn_instance,
+    #     use_tpu=FLAGS.use_tpu,
+    #     train_batch_size=FLAGS.train_batch_size,
+    #     config=run_config,
+    #     params=params)
+    params['batch_size'] = FLAGS.train_batch_size
+    train_estimator = HorovodEstimator(
         model_fn=model_fn_instance,
-        use_tpu=FLAGS.use_tpu,
-        train_batch_size=FLAGS.train_batch_size,
+        model_dir=FLAGS.model_dir,
         config=run_config,
         params=params)
-    train_estimator.train(
-        input_fn=dataloader.InputReader(FLAGS.training_file_pattern,
-                                        is_training=True,
-                                        use_fake_data=FLAGS.use_fake_data),
-        max_steps=int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) /
-                      FLAGS.train_batch_size))
 
-    if FLAGS.eval_after_training:
-      # Run evaluation after training finishes.
-      eval_params = dict(
-          params,
-          use_tpu=False,
-          input_rand_hflip=False,
-          is_training_bn=False,
-          use_bfloat16=False,
-      )
-      eval_estimator = tf.estimator.tpu.TPUEstimator(
-          model_fn=model_fn_instance,
-          use_tpu=False,
-          train_batch_size=FLAGS.train_batch_size,
-          eval_batch_size=FLAGS.eval_batch_size,
-          config=run_config,
-          params=eval_params)
-      eval_results = eval_estimator.evaluate(
-          input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
-                                          is_training=False),
-          steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-      logging.info('Eval results: %s', eval_results)
-      ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
-      utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
+    input_fn = dataloader.InputReader(FLAGS.training_file_pattern,
+                                      is_training=True,
+                                      params=params,
+                                      use_fake_data=FLAGS.use_fake_data)
+    max_steps = int((FLAGS.num_epochs * FLAGS.num_examples_per_epoch) / (FLAGS.train_batch_size * num_shards)) + 1
+
+    train_estimator.train(input_fn=input_fn, max_steps=max_steps)
+
+    # if FLAGS.eval_after_training:
+    #   # Run evaluation after training finishes.
+    #   eval_params = dict(
+    #       params,
+    #       use_tpu=False,
+    #       input_rand_hflip=False,
+    #       is_training_bn=False,
+    #       use_bfloat16=False,
+    #   )
+    #   eval_estimator = tf.estimator.tpu.TPUEstimator(
+    #       model_fn=model_fn_instance,
+    #       use_tpu=False,
+    #       train_batch_size=FLAGS.train_batch_size,
+    #       eval_batch_size=FLAGS.eval_batch_size,
+    #       config=run_config,
+    #       params=eval_params)
+    #   eval_results = eval_estimator.evaluate(
+    #       input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
+    #                                       is_training=False),
+    #       steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
+    #   logging.info('Eval results: %s', eval_results)
+    #   ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
+    #   utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
 
   elif FLAGS.mode == 'eval':
+    config_proto = tf.ConfigProto(
+      allow_soft_placement=True, log_device_placement=False)
+    if FLAGS.use_xla and not FLAGS.use_tpu:
+      config_proto.graph_options.optimizer_options.global_jit_level = (
+        tf.OptimizerOptions.ON_1)
+
+    tpu_config = tf.estimator.tpu.TPUConfig(
+      FLAGS.iterations_per_loop,
+      num_shards=num_shards,
+      num_cores_per_replica=num_cores_per_replica,
+      input_partition_dims=input_partition_dims,
+      per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig
+        .PER_HOST_V2)
+
+    run_config = tf.estimator.tpu.RunConfig(
+      cluster=None,
+      evaluation_master=FLAGS.eval_master,
+      model_dir=FLAGS.model_dir,
+      log_step_count_steps=FLAGS.iterations_per_loop,
+      session_config=config_proto,
+      tpu_config=tpu_config,
+    )
+
     # Eval only runs on CPU or GPU host with batch_size = 1.
     # Override the default options: disable randomization in the input pipeline
     # and don't run on the TPU.
@@ -380,6 +437,7 @@ def main(argv):
       logging.info('Evaluation results: %s', eval_results)
       ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
       utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
+    pass
 
   else:
     logging.info('Mode not found.')

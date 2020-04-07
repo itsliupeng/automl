@@ -21,6 +21,7 @@ https://github.com/tensorflow/tpu/blob/master/models/official/retinanet/anchors.
 import tensorflow.compat.v1 as tf
 
 import anchors
+from horovod_estimator import hvd
 from object_detection import preprocessor
 from object_detection import tf_example_decoder
 
@@ -230,13 +231,16 @@ def pad_to_fixed_size(data, pad_value, output_shape):
 class InputReader(object):
   """Input reader for dataset."""
 
-  def __init__(self, file_pattern, is_training, use_fake_data=False):
+  def __init__(self, file_pattern, is_training, params=None, use_fake_data=False):
     self._file_pattern = file_pattern
     self._is_training = is_training
     self._use_fake_data = use_fake_data
     self._max_num_instances = MAX_NUM_INSTANCES
+    self._params = params
 
-  def __call__(self, params):
+  def __call__(self, params=None):
+    if params is None:
+      params = self._params
     input_anchors = anchors.Anchors(params['min_level'], params['max_level'],
                                     params['num_scales'],
                                     params['aspect_ratios'],
@@ -337,9 +341,13 @@ class InputReader(object):
         return (image, cls_targets, box_targets, num_positives, source_id,
                 image_scale, boxes, is_crowds, areas, classes)
 
-    batch_size = params['batch_size']
     dataset = tf.data.Dataset.list_files(
         self._file_pattern, shuffle=self._is_training)
+
+    if hvd is not None:
+      # 根据 GPU 数量做 shard 均分
+      dataset = dataset.shard(hvd.size(), hvd.rank())
+
     if self._is_training:
       dataset = dataset.repeat()
 
@@ -356,6 +364,7 @@ class InputReader(object):
 
     # Parse the fetched records to input tensors for model function.
     dataset = dataset.map(_dataset_parser, num_parallel_calls=64)
+    batch_size = params['batch_size']
     dataset = dataset.prefetch(batch_size)
     dataset = dataset.batch(batch_size, drop_remainder=True)
 

@@ -534,6 +534,9 @@ class InferenceDriver(object):
       # Build model.
       class_outputs, box_outputs = build_model(self.model_name, images,
                                                **self.params)
+      from horovod_estimator import show_model
+      show_model()
+
       restore_ckpt(sess, self.ckpt_path, enable_ema=True, export_ckpt=None)
       # for postprocessing.
       params.update(

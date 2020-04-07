@@ -197,7 +197,7 @@ def efficientnet(width_coefficient=None,
       relu_fn=tf.nn.swish,
       # The default is TPU-specific batch norm.
       # The alternative is tf.layers.BatchNormalization.
-      batch_norm=utils.TpuBatchNormalization,  # TPU-specific requirement.
+      batch_norm=utils.batch_norm_class,  # TPU-specific requirement.
       use_se=True,
       clip_projection_output=False)
   return global_params
