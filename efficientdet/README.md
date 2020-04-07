@@ -1,5 +1,57 @@
 # EfficientDet
 
+This Repository implements training EfficientDet on multiple GPUs by using horovod, supporting synchronized batch norm.
+
+
+## requiemtns
+install [horovod](https://github.com/horovod/horovod) or using [nvidia docker image](https://ngc.nvidia.com/catalog/containers/nvidia:tensorflow/tags) 
+
+I use nvidia docker image 19.12-tf2-py3
+
+## run in 8 V100 GPUs in one machine 
+```
+export PYTHONPATH="$PYTHONPATH:/path/to/models"
+export num_gpus=8
+export MODEL=efficientdet-d0
+
+mpirun -np $num_gpus -H localhost:$num_gpus \
+--allow-run-as-root -bind-to none -map-by slot -x NCCL_DEBUG=INFO \
+-x LD_LIBRARY_PATH -x PATH -mca pml ob1 -mca btl ^openib \
+--mca btl_smcuda_use_cuda_ipc 0 \
+python main.py --training_file_pattern=<path of tfrecord>/train* \
+    --model_name=$MODEL \
+    --model_dir=/tmp/$MODEL \
+    --hparams="use_bfloat16=false" \
+    --use_tpu=False \
+    --train_batch_size 32 \
+    --num_epochs 100 \
+    --backbone_ckpt=<path of efficientnet-b0> 
+
+```
+
+## run 16 GPUs across 2 machines
+```
+export PYTHONPATH="$PYTHONPATH:/path/to/models"
+export num_gpus=16
+export MODEL=efficientdet-d0
+
+mpirun -np $num_gpus -H <server1>:8,<server2>:8 \
+--allow-run-as-root -bind-to none -map-by slot -x NCCL_DEBUG=INFO \
+-x LD_LIBRARY_PATH -x PATH -mca pml ob1 -mca btl ^openib \
+--mca btl_smcuda_use_cuda_ipc 0 \
+python main.py --training_file_pattern=<path of tfrecord>/train* \
+    --model_name=$MODEL \
+    --model_dir=/tmp/$MODEL \
+    --hparams="use_bfloat16=false" \
+    --use_tpu=False \
+    --train_batch_size 32 \
+    --num_epochs 100 \
+    --backbone_ckpt=<path of efficientnet-b0>
+```
+
+
+
+---
 [1] Mingxing Tan, Ruoming Pang, Quoc V. Le. EfficientDet: Scalable and Efficient Object Detection. CVPR 2020.
     Arxiv link: https://arxiv.org/abs/1911.09070
 
