@@ -49,6 +49,18 @@ python main.py --training_file_pattern=<path of tfrecord>/train* \
     --backbone_ckpt=<path of efficientnet-b0>
 ```
 
+---
+## efficientdet-d0: train in 100 epochs
+### best_eval
+```
+{'AP': 0.32462898, 'AP50': 0.5094514, 'AP75': 0.3423601, 'APl': 0.50561696, 'APm': 0.3810147, 'APs': 0.123363085, 'ARl': 0.67783976, 'ARm': 0.53680605, 'ARmax1': 0.2805749, 'ARmax10': 0.43111312, 'ARmax100': 0.45450443, 'ARs': 0.18260749, 'box_loss': 0.0034143412, 'cls_loss': 0.3554289, 'loss': 0.62295383, 'global_step': 39000}
+```
+#### tensorboard
+![train](g3doc/efficientdet-d0_train.png)
+![val](g3doc/efficientdet-d0_val.png)
+#### log
+[efficientdet-d0_train.log](g3doc/efficientdet-d0_train.log)
+
 
 
 ---
